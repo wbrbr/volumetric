@@ -42,7 +42,7 @@ int main()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    window = glfwCreateWindow(800, 450, "GPU Raytracing", NULL, NULL);
+    window = glfwCreateWindow(512, 512, "GPU Raytracing", NULL, NULL);
 
     if (!window) {
         glfwTerminate();
@@ -52,7 +52,7 @@ int main()
     glfwMakeContextCurrent(window);
     gl3wInit();
 
-    glViewport(0, 0, 800, 450);
+    glViewport(0, 0, 512, 512);
 
     float vertices[] = {
         1.f,  1.f, 0.0f,  1.f, 1.f, // top right
