@@ -39,7 +39,7 @@ int main()
 {
     GLFWwindow* window;
     if (!glfwInit()) return 1;
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     window = glfwCreateWindow(800, 450, "GPU Raytracing", NULL, NULL);
@@ -55,10 +55,10 @@ int main()
     glViewport(0, 0, 800, 450);
 
     float vertices[] = {
-        0.5f,  0.5f, 0.0f,  1.f, 1.f, // top right
-        0.5f, -0.5f, 0.0f,  1.f, 0.f, // bottom right
-        -0.5f, -0.5f, 0.0f, 0.f, 0.f, // bottom left
-        -0.5f,  0.5f, 0.0f, 0.f, 1.f // top left 
+        1.f,  1.f, 0.0f,  1.f, 1.f, // top right
+        1.f, -1.f, 0.0f,  1.f, 0.f, // bottom right
+        -1.f, -1.f, 0.0f, 0.f, 0.f, // bottom left
+        -1.f,  1.f, 0.0f, 0.f, 1.f // top left 
     };
 
     unsigned int indices[] = {  // note that we start from 0!
@@ -93,11 +93,39 @@ int main()
     glDeleteShader(vertex_shader);
     glDeleteShader(fragment_shader);
 
+    unsigned int tex;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glGenerateMipmap(GL_TEXTURE_2D);  
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 512, 512, 0, GL_RGBA, GL_FLOAT, NULL);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+
+
+    unsigned int compute_shader = loadShader("compute.glsl", GL_COMPUTE_SHADER);
+    unsigned int compute_program = glCreateProgram();
+    glAttachShader(compute_program, compute_shader);
+    glLinkProgram(compute_program);
+    glDeleteShader(compute_shader);
+
+    glUseProgram(compute_program);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glBindImageTexture(0, tex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+    glDispatchCompute(32, 32, 1);
+    glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+    glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glUseProgram(0);
+
     glUseProgram(program);
+    glBindTexture(GL_TEXTURE_2D, tex);
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
-
 
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         glfwSwapBuffers(window);
