@@ -69,6 +69,36 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
     }
 }
 
+float* loadVolume(std::string path)
+{
+    std::ifstream f(path);
+
+    unsigned min_x, min_y, min_z, max_x, max_y, max_z;
+    f.read((char*)&min_x, 4);
+    f.read((char*)&min_y, 4);
+    f.read((char*)&min_z, 4);
+    f.read((char*)&max_x, 4);
+    f.read((char*)&max_y, 4);
+    f.read((char*)&max_z, 4);
+
+    printf("(%u, %u, %u) -> (%u, %u, %u)\n", min_x,min_y, min_z, max_x, max_y, max_z);
+    float* buf = (float*)malloc((max_x-min_x)*(max_y-min_y)*(max_z-min_z)*sizeof(float));
+
+    float* ptr = buf;
+    for (unsigned int z = min_z; z <= max_z; z++)
+    {
+        for (unsigned int y = min_y; y <= max_y; y++)
+        {
+            for (unsigned int x = min_x; x <= max_x; x++)
+            {
+                f.read((char*)ptr, 4);
+                ptr++;
+            }
+        }
+    }
+    return nullptr;
+}
+
 int main()
 {
     GLFWwindow* window;
@@ -106,6 +136,7 @@ int main()
         1, 2, 3    // second triangle
     };  
 
+    loadVolume("out.dat");
 
     unsigned int vao, vbo, ebo;
     glGenVertexArrays(1, &vao);
