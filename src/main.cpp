@@ -14,6 +14,8 @@ struct RenderData {
     float sky_color[3];
     int sample_count;
     int nsamples;
+    float sigma_s;
+    float sigma_t;
 };
 
 unsigned int loadShader(std::string path, unsigned int type)
@@ -169,6 +171,8 @@ int main()
     data.sky_color[2] = .8;
     data.sample_count = 0;
     data.nsamples = 1;
+    data.sigma_s = .5f;
+    data.sigma_t = 1.f;
 
     glfwSetWindowUserPointer(window, &data);
     glAttachShader(data.compute_program, compute_shader);
@@ -185,6 +189,9 @@ int main()
         if (ImGui::ColorEdit3("Sky Color", data.sky_color)) data.sample_count = 0;
         ImGui::Text("Samples: %d", data.sample_count);
         ImGui::SliderInt("Samples / Frame", &data.nsamples, 1, 100);
+        if (ImGui::SliderFloat("sigma_t", &data.sigma_t, 0.1, 3.) || ImGui::SliderFloat("sigma_s", &data.sigma_s, 0.1, data.sigma_t)) {
+            data.sample_count = 0;
+        }
         ImGui::End();
         ImGui::Render();
 
@@ -195,11 +202,12 @@ int main()
             glUniform3fv(0, 1, data.sky_color);
             glUniform1i(1, data.sample_count);
             glUniform1i(2, data.nsamples);
+            glUniform1f(3, data.sigma_s);
+            glUniform1f(4, data.sigma_t);
             glDispatchCompute(64, 64, 1);
             glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
             data.sample_count += data.nsamples;
         }
-
 
         glUseProgram(program);
         glBindTexture(GL_TEXTURE_2D, tex);

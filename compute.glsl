@@ -6,6 +6,8 @@ layout(r32f, binding=1) uniform image3D img_rng;
 layout(location = 0) uniform vec3 sky_color;
 layout(location = 1) uniform int sample_count;
 layout(location = 2) uniform int nsamples;
+layout(location = 3) uniform float sigma_s;
+layout(location = 4) uniform float sigma_t;
 
 const int NUM_SPHERES = 2;
 const float PI = 3.1415926538;
@@ -73,7 +75,7 @@ bool intersect_scene(Sphere[NUM_SPHERES] spheres, Ray ray, inout IntersectionDat
     return !isinf(inter.t);
 }
 
-vec3 sphere(ivec2 coords, inout uint r)
+vec3 sample_sphere(ivec2 coords, inout uint r)
 {
     vec3 v;
     do {
@@ -96,6 +98,13 @@ vec3 hemisphere(vec3 n, ivec2 coords, inout uint r)
         r = (r + 3) % 100;
     } while (length(v) >= 0.999 || dot(v, n) < 0.);
     return normalize(v);
+}
+
+float random(ivec2 coords, inout uint r)
+{
+    float v = imageLoad(img_rng, ivec3(coords, r)).r;
+    r = (r + 1) % 100;
+    return v;
 }
 
 void main() {
@@ -126,9 +135,7 @@ void main() {
     
     vec3 color = vec3(0);
 
-    uint r = sample_count;
-
-    float sigma_t = 1.;
+    uint r = sample_count % 100;
 
     bool in_volume = false;
 
@@ -140,14 +147,26 @@ void main() {
         vec3 L = vec3(0);
         vec3 throughput = vec3(1);
 
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < 10; i++)
         {
             if (intersect_sphere(sphere, ray, inter)) {
                 L += throughput * inter.emission;
 
-                if (in_volume) { // escape volume
-                    throughput *= exp(-sigma_t * inter.t) * inter.color;
-                    ray.o = ray.o + inter.t * ray.d + 0.001 * inter.normal;
+                if (in_volume) {
+                    float tmax = inter.t;
+                    /* throughput *= exp(-sigma_t*tmax);
+                    ray.o = ray.o + tmax * ray.d + 0.001 * inter.normal; */
+                    
+                    // sample new position
+                    float t = -log(1. - random(coords, r)) / sigma_t;
+
+                    if (t < tmax) {
+                        throughput *= sigma_s / sigma_t;
+                        vec3 new_dir = sample_sphere(coords, r);
+                        ray.o = ray.o + t * new_dir;
+                    } else { // escape the volume
+                        ray.o = ray.o + tmax * ray.d + 0.001 * inter.normal;
+                    }
                 } else { // enter volume, nothing happens
                     ray.o = ray.o + inter.t * ray.d - 0.001 * inter.normal;
                 }
