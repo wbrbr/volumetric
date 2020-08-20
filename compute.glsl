@@ -2,11 +2,13 @@
 layout(local_size_x=16, local_size_y=16) in;
 layout(rgba32f, binding=0) uniform image2D img_output;
 
+uniform sampler3D density;
+
 layout(location = 0) uniform vec3 sky_color;
 layout(location = 1) uniform int sample_count;
 layout(location = 2) uniform int nsamples;
-layout(location = 3) uniform float sigma_s;
-layout(location = 4) uniform float sigma_t;
+layout(location = 3) uniform float albedo;
+layout(location = 4) uniform float sigma_hat;
 
 const int NUM_SPHERES = 2;
 const float PI = 3.1415926538;
@@ -116,19 +118,57 @@ vec3 sample_sphere(inout float seed)
     return normalize(v);
 } */
 
-float sample_distance(Ray ray, float sigma_hat)
+/* float sample_distance(Ray ray, float sigma_hat)
 {
     float t = 0;
-    for (;;) {
+    for (int i = 0; i < 10000; i++) {
+    // for (;;) {
         vec2 r = hash2(g_seed);
         t -= log(1 - r.x) / sigma_hat;
 
-        float sigma_t = length(ray.o + t * ray.d);
+        // get density
+        vec3 p = ray.o + t * ray.d;
+        float sigma_t;
+        if (length(p) > 1) sigma_t = 0;
+        else {
+            p = p / 2. + vec3(1.); // [0, 1]
+            p *= 100.; // [0, 100]
+            sigma_t = texture(density, p).r;
+        }
+
         if (r.y < sigma_t / sigma_hat) {
             break;
         }
     }
 
+    return t;
+} */
+
+float sample_distance(Ray ray, float sigma_hat)
+{
+    vec2 r = hash2(g_seed);
+    //return -log(1-r.x) / sigma_hat;
+    float h = .01;
+    float val = -log(1 - r.x);
+    float s = 0;
+    float t = 0;
+    while (s < val) {
+        // get density
+        vec3 p = ray.o + t * ray.d;
+        float sigma_t;
+        if (length(p) > 1) return t;
+        else {
+            p = p / 2. + vec3(1.); // [0, 1]
+            p *= 5;
+            /* p += vec3(.5); */
+            /* p = mod(p,1); */
+            //p *= 100.; // [0, 100]
+            /* p =  vec3(r, 1); */
+            sigma_t = textureLod(density, p, 0).r * 10.;
+            s += h * sigma_t;
+        }
+        t += h;
+    }
     return t;
 }
 
@@ -162,7 +202,6 @@ void main() {
 
     g_seed = float(base_hash(uvec2(coords)))/float(0xffffffffU) + float(sample_count);
 
-    float sigma_hat = 1.3;
     bool in_volume = false;
 
     for (int s = 0; s < nsamples; s++)
@@ -186,9 +225,8 @@ void main() {
                     float t = sample_distance(ray, sigma_hat);
 
                     if (t < tmax) {
-                        float sigma_t_here = length(ray.o + t * ray.d);
                         // albedo ^^
-                        throughput *= sigma_s;
+                        throughput *= albedo;
                         vec3 new_dir = sample_sphere(g_seed);
                         ray.o = ray.o + t * new_dir;
                     } else { // escape the volume

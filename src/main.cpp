@@ -14,8 +14,7 @@ struct RenderData {
     float sky_color[3];
     int sample_count;
     int nsamples;
-    float sigma_s;
-    float sigma_t;
+    float albedo;
 };
 
 unsigned int loadShader(std::string path, unsigned int type)
@@ -69,7 +68,7 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
     }
 }
 
-float* loadVolume(std::string path)
+float* loadVolume(std::string path, unsigned int& size_x, unsigned int& size_y, unsigned int& size_z, float& sigma_hat)
 {
     std::ifstream f(path);
 
@@ -82,7 +81,12 @@ float* loadVolume(std::string path)
     f.read((char*)&max_z, 4);
 
     printf("(%u, %u, %u) -> (%u, %u, %u)\n", min_x,min_y, min_z, max_x, max_y, max_z);
-    float* buf = (float*)malloc((max_x-min_x)*(max_y-min_y)*(max_z-min_z)*sizeof(float));
+    size_x = max_x - min_x + 1;
+    size_y = max_y - min_y + 1;
+    size_z = max_z - min_z + 1;
+    float* buf = (float*)malloc(size_x*size_y*size_z*sizeof(float));
+
+    sigma_hat = 0.;
 
     float* ptr = buf;
     for (unsigned int z = min_z; z <= max_z; z++)
@@ -92,11 +96,13 @@ float* loadVolume(std::string path)
             for (unsigned int x = min_x; x <= max_x; x++)
             {
                 f.read((char*)ptr, 4);
+                sigma_hat = std::max(sigma_hat, *ptr);
                 ptr++;
             }
         }
     }
-    return nullptr;
+    std::cout << sigma_hat << std::endl;
+    return buf;
 }
 
 int main()
@@ -136,7 +142,9 @@ int main()
         1, 2, 3    // second triangle
     };  
 
-    loadVolume("out.dat");
+    unsigned int size_x, size_y, size_z;
+    float sigma_hat;
+    float* density = loadVolume("out.dat", size_x, size_y, size_z, sigma_hat);
 
     unsigned int vao, vbo, ebo;
     glGenVertexArrays(1, &vao);
@@ -175,6 +183,17 @@ int main()
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 1024, 1024, 0, GL_RGBA, GL_FLOAT, NULL);
     glBindTexture(GL_TEXTURE_2D, 0);
 
+
+    unsigned int density_tex;
+    glGenTextures(1, &density_tex);
+    glBindTexture(GL_TEXTURE_3D, density_tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexImage3D(GL_TEXTURE_3D, 0, GL_R32F, size_x, size_y, size_z, 0, GL_RED, GL_FLOAT, density);
+    glGenerateMipmap(GL_TEXTURE_3D);
+
     unsigned int compute_shader = loadShader("compute.glsl", GL_COMPUTE_SHADER);
     RenderData data;
     data.compute_program = glCreateProgram();
@@ -182,9 +201,8 @@ int main()
     data.sky_color[1] = .7;
     data.sky_color[2] = .8;
     data.sample_count = 0;
-    data.nsamples = 1;
-    data.sigma_s = .5f;
-    data.sigma_t = 1.f;
+    data.nsamples = 30;
+    data.albedo = .5f;
 
     glfwSetWindowUserPointer(window, &data);
     glAttachShader(data.compute_program, compute_shader);
@@ -201,7 +219,7 @@ int main()
         if (ImGui::ColorEdit3("Sky Color", data.sky_color)) data.sample_count = 0;
         ImGui::Text("Samples: %d", data.sample_count);
         ImGui::SliderInt("Samples / Frame", &data.nsamples, 1, 100);
-        if (ImGui::SliderFloat("sigma_t", &data.sigma_t, 0.1, 3.) || ImGui::SliderFloat("sigma_s", &data.sigma_s, 0.1, data.sigma_t)) {
+        if (ImGui::SliderFloat("albedo", &data.albedo, 0., 1.)) {
             data.sample_count = 0;
         }
         ImGui::End();
@@ -213,8 +231,8 @@ int main()
             glUniform3fv(0, 1, data.sky_color);
             glUniform1i(1, data.sample_count);
             glUniform1i(2, data.nsamples);
-            glUniform1f(3, data.sigma_s);
-            glUniform1f(4, data.sigma_t);
+            glUniform1f(3, data.albedo);
+            glUniform1f(4, sigma_hat);
             glDispatchCompute(64, 64, 1);
             glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
             data.sample_count += data.nsamples;
