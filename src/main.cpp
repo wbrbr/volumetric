@@ -4,6 +4,7 @@
 #include <string>
 #include <iostream>
 #include <sstream>
+#include <random>
 
 unsigned int loadShader(std::string path, unsigned int type)
 {
@@ -35,6 +36,29 @@ unsigned int loadShader(std::string path, unsigned int type)
     return shader;
 }
 
+unsigned int loadCompute()
+{
+    unsigned int compute_shader = loadShader("compute.glsl", GL_COMPUTE_SHADER);
+    unsigned int compute_program = glCreateProgram();
+    glAttachShader(compute_program, compute_shader);
+    glLinkProgram(compute_program);
+    glDeleteShader(compute_shader);
+
+    glUseProgram(compute_program);
+    glDispatchCompute(32, 32, 1);
+    glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+    return compute_program;
+}
+
+void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
+{
+    if (key == GLFW_KEY_R && action == GLFW_PRESS) {
+        unsigned int* ptr = (unsigned int*)glfwGetWindowUserPointer(window);
+        glDeleteProgram(*ptr);
+        *ptr = loadCompute();
+    }
+}
+
 int main()
 {
     GLFWwindow* window;
@@ -43,6 +67,7 @@ int main()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     window = glfwCreateWindow(512, 512, "GPU Raytracing", NULL, NULL);
+    glfwSetKeyCallback(window, key_callback);
 
     if (!window) {
         glfwTerminate();
@@ -104,10 +129,28 @@ int main()
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 512, 512, 0, GL_RGBA, GL_FLOAT, NULL);
     glBindTexture(GL_TEXTURE_2D, 0);
 
+    unsigned int rng_tex;
+    glGenTextures(1, &rng_tex);
+    glBindTexture(GL_TEXTURE_3D, rng_tex);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
+    std::mt19937 device(2020);
+    std::uniform_real_distribution<float> dist(0.f, 1.f);
+
+    float* rngbuf = (float*)malloc(512*512*100*sizeof(float));
+    for (int i = 0; i < 512*512*100; i++)
+    {
+        rngbuf[i] = dist(device);
+    }
+    glTexImage3D(GL_TEXTURE_3D, 0, GL_R32F, 512, 512, 100, 0, GL_RED, GL_FLOAT, rngbuf);
+    glGenerateMipmap(GL_TEXTURE_3D);
 
     unsigned int compute_shader = loadShader("compute.glsl", GL_COMPUTE_SHADER);
     unsigned int compute_program = glCreateProgram();
+    glfwSetWindowUserPointer(window, &compute_program);
     glAttachShader(compute_program, compute_shader);
     glLinkProgram(compute_program);
     glDeleteShader(compute_shader);
@@ -115,18 +158,14 @@ int main()
     glUseProgram(compute_program);
     glBindTexture(GL_TEXTURE_2D, tex);
     glBindImageTexture(0, tex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+    glBindImageTexture(1, rng_tex, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32F);
     glDispatchCompute(32, 32, 1);
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-    glBindImageTexture(0, 0, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    glUseProgram(0);
-
-    glUseProgram(program);
-    glBindTexture(GL_TEXTURE_2D, tex);
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
+        glUseProgram(program);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         glfwSwapBuffers(window);
     }
