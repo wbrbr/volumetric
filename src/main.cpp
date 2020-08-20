@@ -12,8 +12,8 @@
 struct RenderData {
     unsigned int compute_program;
     float sky_color[3];
-    unsigned int sample_count;
-    unsigned int nsamples;
+    int sample_count;
+    int nsamples;
 };
 
 unsigned int loadShader(std::string path, unsigned int type)
@@ -183,7 +183,8 @@ int main()
         ImGui::NewFrame();
         ImGui::Begin("Hello");
         if (ImGui::ColorEdit3("Sky Color", data.sky_color)) data.sample_count = 0;
-        ImGui::Text("%d", data.sample_count);
+        ImGui::Text("Samples: %d", data.sample_count);
+        ImGui::SliderInt("Samples / Frame", &data.nsamples, 1, 100);
         ImGui::End();
         ImGui::Render();
 
@@ -192,8 +193,8 @@ int main()
             glBindImageTexture(0, tex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
             glBindImageTexture(1, rng_tex, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32F);
             glUniform3fv(0, 1, data.sky_color);
-            glUniform1ui(1, data.sample_count);
-            glUniform1ui(2, data.nsamples);
+            glUniform1i(1, data.sample_count);
+            glUniform1i(2, data.nsamples);
             glDispatchCompute(64, 64, 1);
             glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
             data.sample_count += data.nsamples;

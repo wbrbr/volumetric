@@ -4,8 +4,8 @@ layout(rgba32f, binding=0) uniform image2D img_output;
 layout(r32f, binding=1) uniform image3D img_rng;
 
 layout(location = 0) uniform vec3 sky_color;
-layout(location = 1) uniform uint sample_count;
-layout(location = 2) uniform uint nsamples;
+layout(location = 1) uniform int sample_count;
+layout(location = 2) uniform int nsamples;
 
 const int NUM_SPHERES = 2;
 const float PI = 3.1415926538;
@@ -127,30 +127,37 @@ void main() {
     vec3 color = vec3(0);
 
     uint r = sample_count;
+
+    float sigma_t = 1.;
+
+    bool in_volume = false;
+
     for (int s = 0; s < nsamples; s++)
     {
         Ray ray;
         ray.o = vec3(0, 0, -2);
         ray.d = normalize(target - ray.o);
-        /*  vec2 dxy;
-        dxy.x = imageLoad(img_rng, ivec3(coords, r)).r * 2. - 1.;
-        dxy.y = imageLoad(img_rng, ivec3(coords, r)).r * 2. - 1.;
-        dxy /= 512.;
-        dxy = vec2(0);
-        r = (r + 2) % 100;
-        ray.d = normalize(target + vec3(dxy, 0) - ray.o); */
         vec3 L = vec3(0);
         vec3 throughput = vec3(1);
 
         for (int i = 0; i < 5; i++)
         {
-            if (intersect_scene(spheres, ray, inter)) {
+            if (intersect_sphere(sphere, ray, inter)) {
                 L += throughput * inter.emission;
-                vec3 new_dir = hemisphere(inter.normal, coords, r);
+
+                if (in_volume) { // escape volume
+                    throughput *= exp(-sigma_t * inter.t) * inter.color;
+                    ray.o = ray.o + inter.t * ray.d + 0.001 * inter.normal;
+                } else { // enter volume, nothing happens
+                    ray.o = ray.o + inter.t * ray.d - 0.001 * inter.normal;
+                }
+                in_volume = !in_volume;
+
+                /* vec3 new_dir = hemisphere(inter.normal, coords, r);
                 throughput *= inter.color * dot(new_dir, inter.normal);
 
                 ray.o = ray.o + inter.t * ray.d + 0.001 * inter.normal;
-                ray.d = new_dir;
+                ray.d = new_dir; */
             } else {
                 L += throughput * sky_color;
                 break;
