@@ -107,6 +107,21 @@ float random(ivec2 coords, inout uint r)
     return v;
 }
 
+float sample_distance(Ray ray, float sigma_hat, ivec2 coords, inout uint r)
+{
+    float t = 0;
+    for (;;) {
+        t -= log(1 - random(coords, r)) / sigma_hat;
+
+        float sigma_t = length(ray.o + t * ray.d);
+        if (random(coords, r) < sigma_t / sigma_hat) {
+            break;
+        }
+    }
+
+    return t;
+}
+
 void main() {
     ivec2 coords = ivec2(gl_GlobalInvocationID);
 
@@ -137,6 +152,7 @@ void main() {
 
     uint r = sample_count % 100;
 
+    float sigma_hat = 1.3;
     bool in_volume = false;
 
     for (int s = 0; s < nsamples; s++)
@@ -154,14 +170,15 @@ void main() {
 
                 if (in_volume) {
                     float tmax = inter.t;
-                    /* throughput *= exp(-sigma_t*tmax);
-                    ray.o = ray.o + tmax * ray.d + 0.001 * inter.normal; */
                     
                     // sample new position
-                    float t = -log(1. - random(coords, r)) / sigma_t;
+                    //float t = -log(1. - random(coords, r)) / sigma_t;
+                    float t = sample_distance(ray, sigma_hat, coords, r);
 
                     if (t < tmax) {
-                        throughput *= sigma_s / sigma_t;
+                        float sigma_t_here = length(ray.o + t * ray.d);
+                        // albedo ^^
+                        throughput *= sigma_s;
                         vec3 new_dir = sample_sphere(coords, r);
                         ray.o = ray.o + t * new_dir;
                     } else { // escape the volume
