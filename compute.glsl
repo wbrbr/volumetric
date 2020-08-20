@@ -1,7 +1,6 @@
 #version 430
 layout(local_size_x=16, local_size_y=16) in;
 layout(rgba32f, binding=0) uniform image2D img_output;
-layout(r32f, binding=1) uniform image3D img_rng;
 
 layout(location = 0) uniform vec3 sky_color;
 layout(location = 1) uniform int sample_count;
@@ -11,6 +10,26 @@ layout(location = 4) uniform float sigma_t;
 
 const int NUM_SPHERES = 2;
 const float PI = 3.1415926538;
+
+uint base_hash(uvec2 p) {
+    p = 1103515245U*((p >> 1U)^(p.yx));
+    uint h32 = 1103515245U*((p.x)^(p.y>>3U));
+    return h32^(h32 >> 16);
+}
+
+float g_seed = 1.23456789;
+
+vec2 hash2(inout float seed) {
+    uint n = base_hash(floatBitsToUint(vec2(seed+=.1,seed+=.1)));
+    uvec2 rz = uvec2(n, n*48271U);
+    return vec2(rz.xy & uvec2(0x7fffffffU))/float(0x7fffffff);
+}
+
+vec3 hash3(inout float seed) {
+    uint n = base_hash(floatBitsToUint(vec2(seed+=.1,seed+=.1)));
+    uvec3 rz = uvec3(n, n*16807U, n*48271U);
+    return vec3(rz & uvec3(0x7fffffffU))/float(0x7fffffff);
+}
 
 struct Ray {
     vec3 o, d;
@@ -75,20 +94,17 @@ bool intersect_scene(Sphere[NUM_SPHERES] spheres, Ray ray, inout IntersectionDat
     return !isinf(inter.t);
 }
 
-vec3 sample_sphere(ivec2 coords, inout uint r)
+vec3 sample_sphere(inout float seed)
 {
     vec3 v;
     do {
-        v.x = imageLoad(img_rng, ivec3(coords, r)).r * 2. - 1.;
-        v.y = imageLoad(img_rng, ivec3(coords, r+1)).r * 2. - 1.;
-        v.z = imageLoad(img_rng, ivec3(coords, r+2)).r * 2. - 1.;
-        r = (r+3) % 100;
+        v = hash3(seed) * 2. - 1.;
     } while (length(v) >= 0.999f);
 
     return normalize(v);
 }
 
-vec3 hemisphere(vec3 n, ivec2 coords, inout uint r)
+/* vec3 hemisphere(vec3 n, ivec2 coords, inout uint r)
 {
     vec3 v;
     do {
@@ -98,23 +114,17 @@ vec3 hemisphere(vec3 n, ivec2 coords, inout uint r)
         r = (r + 3) % 100;
     } while (length(v) >= 0.999 || dot(v, n) < 0.);
     return normalize(v);
-}
+} */
 
-float random(ivec2 coords, inout uint r)
-{
-    float v = imageLoad(img_rng, ivec3(coords, r)).r;
-    r = (r + 1) % 100;
-    return v;
-}
-
-float sample_distance(Ray ray, float sigma_hat, ivec2 coords, inout uint r)
+float sample_distance(Ray ray, float sigma_hat)
 {
     float t = 0;
     for (;;) {
-        t -= log(1 - random(coords, r)) / sigma_hat;
+        vec2 r = hash2(g_seed);
+        t -= log(1 - r.x) / sigma_hat;
 
         float sigma_t = length(ray.o + t * ray.d);
-        if (random(coords, r) < sigma_t / sigma_hat) {
+        if (r.y < sigma_t / sigma_hat) {
             break;
         }
     }
@@ -150,7 +160,7 @@ void main() {
     
     vec3 color = vec3(0);
 
-    uint r = sample_count % 100;
+    g_seed = float(base_hash(uvec2(coords)))/float(0xffffffffU) + float(sample_count);
 
     float sigma_hat = 1.3;
     bool in_volume = false;
@@ -173,13 +183,13 @@ void main() {
                     
                     // sample new position
                     //float t = -log(1. - random(coords, r)) / sigma_t;
-                    float t = sample_distance(ray, sigma_hat, coords, r);
+                    float t = sample_distance(ray, sigma_hat);
 
                     if (t < tmax) {
                         float sigma_t_here = length(ray.o + t * ray.d);
                         // albedo ^^
                         throughput *= sigma_s;
-                        vec3 new_dir = sample_sphere(coords, r);
+                        vec3 new_dir = sample_sphere(g_seed);
                         ray.o = ray.o + t * new_dir;
                     } else { // escape the volume
                         ray.o = ray.o + tmax * ray.d + 0.001 * inter.normal;
@@ -189,11 +199,6 @@ void main() {
                 }
                 in_volume = !in_volume;
 
-                /* vec3 new_dir = hemisphere(inter.normal, coords, r);
-                throughput *= inter.color * dot(new_dir, inter.normal);
-
-                ray.o = ray.o + inter.t * ray.d + 0.001 * inter.normal;
-                ray.d = new_dir; */
             } else {
                 L += throughput * sky_color;
                 break;

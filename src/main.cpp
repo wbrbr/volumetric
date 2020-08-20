@@ -144,25 +144,6 @@ int main()
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 1024, 1024, 0, GL_RGBA, GL_FLOAT, NULL);
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    unsigned int rng_tex;
-    glGenTextures(1, &rng_tex);
-    glBindTexture(GL_TEXTURE_3D, rng_tex);
-    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-
-    std::mt19937 device(2020);
-    std::uniform_real_distribution<float> dist(0.f, 1.f);
-
-    float* rngbuf = (float*)malloc(1024*1024*100*sizeof(float));
-    for (int i = 0; i < 1024*1024*100; i++)
-    {
-        rngbuf[i] = dist(device);
-    }
-    glTexImage3D(GL_TEXTURE_3D, 0, GL_R32F, 1024, 1024, 100, 0, GL_RED, GL_FLOAT, rngbuf);
-    glGenerateMipmap(GL_TEXTURE_3D);
-
     unsigned int compute_shader = loadShader("compute.glsl", GL_COMPUTE_SHADER);
     RenderData data;
     data.compute_program = glCreateProgram();
@@ -198,7 +179,6 @@ int main()
         if (data.sample_count < 300) {
             glUseProgram(data.compute_program);
             glBindImageTexture(0, tex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
-            glBindImageTexture(1, rng_tex, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32F);
             glUniform3fv(0, 1, data.sky_color);
             glUniform1i(1, data.sample_count);
             glUniform1i(2, data.nsamples);
