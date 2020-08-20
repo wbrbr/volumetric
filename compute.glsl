@@ -3,6 +3,8 @@ layout(local_size_x=16, local_size_y=16) in;
 layout(rgba32f, binding=0) uniform image2D img_output;
 layout(r32f, binding=1) uniform image3D img_rng;
 
+layout(location = 0) uniform vec3 sky_color;
+
 const int NUM_SPHERES = 2;
 const float PI = 3.1415926538;
 
@@ -91,20 +93,17 @@ vec3 hemisphere(vec3 n, ivec2 coords, inout uint r)
         v.z = imageLoad(img_rng, ivec3(coords, r+2)).r * 2. - 1.;
         r = (r + 3) % 100;
     } while (length(v) >= 0.999 || dot(v, n) < 0.);
-    /* if (dot(v, n) < 0) v *= -1; */
-    /* if (dot(v, n) < 0) v = reflect(v, n); */
     return normalize(v);
 }
 
 void main() {
     ivec2 coords = ivec2(gl_GlobalInvocationID);
 
-
     Sphere spheres[NUM_SPHERES];
     spheres[0].c = vec3(.5, 0, 0);
     spheres[0].r = .5;
-    spheres[0].color = vec3(1, 0, .5);
-    spheres[0].emission = vec3(0, 1, 0);
+    spheres[0].color = vec3(.5, .5, .5);
+    spheres[0].emission = vec3(0);
     spheres[1].c = vec3(-.5, 0, 0);
     spheres[1].r = .5;
     spheres[1].color = vec3(.1, .5, 1);
@@ -117,17 +116,15 @@ void main() {
     sphere.emission = vec3(0);
     
     vec3 target;
-    target.x = (float(coords.x) / 512.) * 2. - 1.;
-    target.y = (float(coords.y) / 512.) * 2. - 1.;
+    target.x = (float(coords.x) / 1024.) * 2. - 1.;
+    target.y = (float(coords.y) / 1024.) * 2. - 1.;
     target.z = 0;
 
     IntersectionData inter;
     
-    vec3 sky_color = vec3(.6, .7, .8);
-
     vec3 color = vec3(0);
 
-    const int nsamples = 100;
+    const int nsamples = 10;
 
     uint r = 0;
     for (int s = 0; s < nsamples; s++)

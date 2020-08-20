@@ -1,3 +1,6 @@
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
 #include "GL/gl3w.h"
 #include <GLFW/glfw3.h>
 #include <fstream>
@@ -5,6 +8,11 @@
 #include <iostream>
 #include <sstream>
 #include <random>
+
+struct RenderData {
+    unsigned int compute_program;
+    float sky_color[3];
+};
 
 unsigned int loadShader(std::string path, unsigned int type)
 {
@@ -36,6 +44,14 @@ unsigned int loadShader(std::string path, unsigned int type)
     return shader;
 }
 
+void rerender(RenderData* data)
+{
+    glUseProgram(data->compute_program);
+    glUniform3fv(0, 1, data->sky_color);
+    glDispatchCompute(64, 64, 1);
+    glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+}
+
 unsigned int loadCompute()
 {
     unsigned int compute_shader = loadShader("compute.glsl", GL_COMPUTE_SHADER);
@@ -44,18 +60,16 @@ unsigned int loadCompute()
     glLinkProgram(compute_program);
     glDeleteShader(compute_shader);
 
-    glUseProgram(compute_program);
-    glDispatchCompute(32, 32, 1);
-    glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
     return compute_program;
 }
 
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
     if (key == GLFW_KEY_R && action == GLFW_PRESS) {
-        unsigned int* ptr = (unsigned int*)glfwGetWindowUserPointer(window);
-        glDeleteProgram(*ptr);
-        *ptr = loadCompute();
+        RenderData* ptr = (RenderData*)glfwGetWindowUserPointer(window);
+        glDeleteProgram(ptr->compute_program);
+        ptr->compute_program = loadCompute();
+        rerender(ptr);
     }
 }
 
@@ -66,7 +80,7 @@ int main()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    window = glfwCreateWindow(512, 512, "GPU Raytracing", NULL, NULL);
+    window = glfwCreateWindow(1024, 1024, "GPU Raytracing", NULL, NULL);
     glfwSetKeyCallback(window, key_callback);
 
     if (!window) {
@@ -77,7 +91,12 @@ int main()
     glfwMakeContextCurrent(window);
     gl3wInit();
 
-    glViewport(0, 0, 512, 512);
+    glViewport(0, 0, 1024, 1024);
+
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init("#version 430");
 
     float vertices[] = {
         1.f,  1.f, 0.0f,  1.f, 1.f, // top right
@@ -126,7 +145,7 @@ int main()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glGenerateMipmap(GL_TEXTURE_2D);  
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 512, 512, 0, GL_RGBA, GL_FLOAT, NULL);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 1024, 1024, 0, GL_RGBA, GL_FLOAT, NULL);
     glBindTexture(GL_TEXTURE_2D, 0);
 
     unsigned int rng_tex;
@@ -140,33 +159,48 @@ int main()
     std::mt19937 device(2020);
     std::uniform_real_distribution<float> dist(0.f, 1.f);
 
-    float* rngbuf = (float*)malloc(512*512*100*sizeof(float));
-    for (int i = 0; i < 512*512*100; i++)
+    float* rngbuf = (float*)malloc(1024*1024*100*sizeof(float));
+    for (int i = 0; i < 1024*1024*100; i++)
     {
         rngbuf[i] = dist(device);
     }
-    glTexImage3D(GL_TEXTURE_3D, 0, GL_R32F, 512, 512, 100, 0, GL_RED, GL_FLOAT, rngbuf);
+    glTexImage3D(GL_TEXTURE_3D, 0, GL_R32F, 1024, 1024, 100, 0, GL_RED, GL_FLOAT, rngbuf);
     glGenerateMipmap(GL_TEXTURE_3D);
 
     unsigned int compute_shader = loadShader("compute.glsl", GL_COMPUTE_SHADER);
-    unsigned int compute_program = glCreateProgram();
-    glfwSetWindowUserPointer(window, &compute_program);
-    glAttachShader(compute_program, compute_shader);
-    glLinkProgram(compute_program);
+    RenderData data;
+    data.compute_program = glCreateProgram();
+    data.sky_color[0] = .6;
+    data.sky_color[1] = .7;
+    data.sky_color[2] = .8;
+
+    glfwSetWindowUserPointer(window, &data);
+    glAttachShader(data.compute_program, compute_shader);
+    glLinkProgram(data.compute_program);
     glDeleteShader(compute_shader);
 
-    glUseProgram(compute_program);
+    glUseProgram(data.compute_program);
     glBindTexture(GL_TEXTURE_2D, tex);
     glBindImageTexture(0, tex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
     glBindImageTexture(1, rng_tex, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32F);
-    glDispatchCompute(32, 32, 1);
+    glUniform3fv(0, 1, data.sky_color);
+    glDispatchCompute(64, 64, 1);
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+        ImGui::Begin("Hello");
+        if (ImGui::ColorEdit3("Sky Color", data.sky_color)) rerender(&data);
+        ImGui::End();
+        ImGui::Render();
+
         glUseProgram(program);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         glfwSwapBuffers(window);
     }
     
