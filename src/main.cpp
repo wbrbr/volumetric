@@ -12,6 +12,8 @@
 struct RenderData {
     unsigned int compute_program;
     float sky_color[3];
+    unsigned int sample_count;
+    unsigned int nsamples;
 };
 
 unsigned int loadShader(std::string path, unsigned int type)
@@ -44,14 +46,6 @@ unsigned int loadShader(std::string path, unsigned int type)
     return shader;
 }
 
-void rerender(RenderData* data)
-{
-    glUseProgram(data->compute_program);
-    glUniform3fv(0, 1, data->sky_color);
-    glDispatchCompute(64, 64, 1);
-    glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-}
-
 unsigned int loadCompute()
 {
     unsigned int compute_shader = loadShader("compute.glsl", GL_COMPUTE_SHADER);
@@ -69,7 +63,7 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
         RenderData* ptr = (RenderData*)glfwGetWindowUserPointer(window);
         glDeleteProgram(ptr->compute_program);
         ptr->compute_program = loadCompute();
-        rerender(ptr);
+        ptr->sample_count = 0;
     }
 }
 
@@ -173,19 +167,13 @@ int main()
     data.sky_color[0] = .6;
     data.sky_color[1] = .7;
     data.sky_color[2] = .8;
+    data.sample_count = 0;
+    data.nsamples = 1;
 
     glfwSetWindowUserPointer(window, &data);
     glAttachShader(data.compute_program, compute_shader);
     glLinkProgram(data.compute_program);
     glDeleteShader(compute_shader);
-
-    glUseProgram(data.compute_program);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glBindImageTexture(0, tex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
-    glBindImageTexture(1, rng_tex, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32F);
-    glUniform3fv(0, 1, data.sky_color);
-    glDispatchCompute(64, 64, 1);
-    glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -194,11 +182,26 @@ int main()
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
         ImGui::Begin("Hello");
-        if (ImGui::ColorEdit3("Sky Color", data.sky_color)) rerender(&data);
+        if (ImGui::ColorEdit3("Sky Color", data.sky_color)) data.sample_count = 0;
+        ImGui::Text("%d", data.sample_count);
         ImGui::End();
         ImGui::Render();
 
+        if (data.sample_count < 300) {
+            glUseProgram(data.compute_program);
+            glBindImageTexture(0, tex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+            glBindImageTexture(1, rng_tex, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32F);
+            glUniform3fv(0, 1, data.sky_color);
+            glUniform1ui(1, data.sample_count);
+            glUniform1ui(2, data.nsamples);
+            glDispatchCompute(64, 64, 1);
+            glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+            data.sample_count += data.nsamples;
+        }
+
+
         glUseProgram(program);
+        glBindTexture(GL_TEXTURE_2D, tex);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         glfwSwapBuffers(window);
