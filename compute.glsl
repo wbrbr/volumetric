@@ -9,6 +9,7 @@ layout(location = 1) uniform int sample_count;
 layout(location = 2) uniform int nsamples;
 layout(location = 3) uniform float albedo;
 layout(location = 4) uniform float sigma_hat;
+layout(location = 5) uniform float density_scale;
 
 const int NUM_SPHERES = 2;
 const float PI = 3.1415926538;
@@ -158,13 +159,14 @@ float sample_distance(Ray ray, float sigma_hat)
         float sigma_t;
         if (length(p) > 1) return t;
         else {
-            p = p / 2. + vec3(1.); // [0, 1]
-            p *= 5;
-            /* p += vec3(.5); */
+            /* p = p / 2. + vec3(1.); // [0, 1] */
+            /* p = p/2.; */
+            p.xz *= 3;
+            p += vec3(.2);
             /* p = mod(p,1); */
             //p *= 100.; // [0, 100]
             /* p =  vec3(r, 1); */
-            sigma_t = textureLod(density, p, 0).r * 10.;
+            sigma_t = textureLod(density, p, 0).r * density_scale;
             s += h * sigma_t;
         }
         t += h;

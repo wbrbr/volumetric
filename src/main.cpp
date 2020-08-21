@@ -72,7 +72,7 @@ float* loadVolume(std::string path, unsigned int& size_x, unsigned int& size_y, 
 {
     std::ifstream f(path);
 
-    unsigned min_x, min_y, min_z, max_x, max_y, max_z;
+    int min_x, min_y, min_z, max_x, max_y, max_z;
     f.read((char*)&min_x, 4);
     f.read((char*)&min_y, 4);
     f.read((char*)&min_z, 4);
@@ -81,19 +81,19 @@ float* loadVolume(std::string path, unsigned int& size_x, unsigned int& size_y, 
     f.read((char*)&max_z, 4);
 
     printf("(%u, %u, %u) -> (%u, %u, %u)\n", min_x,min_y, min_z, max_x, max_y, max_z);
-    size_x = max_x - min_x + 1;
-    size_y = max_y - min_y + 1;
-    size_z = max_z - min_z + 1;
+    size_x = (unsigned)(max_x - min_x + 1);
+    size_y = (unsigned)(max_y - min_y + 1);
+    size_z = (unsigned)(max_z - min_z + 1);
     float* buf = (float*)malloc(size_x*size_y*size_z*sizeof(float));
 
     sigma_hat = 0.;
 
     float* ptr = buf;
-    for (unsigned int z = min_z; z <= max_z; z++)
+    for (int z = min_z; z <= max_z; z++)
     {
-        for (unsigned int y = min_y; y <= max_y; y++)
+        for (int y = min_y; y <= max_y; y++)
         {
-            for (unsigned int x = min_x; x <= max_x; x++)
+            for (int x = min_x; x <= max_x; x++)
             {
                 f.read((char*)ptr, 4);
                 sigma_hat = std::max(sigma_hat, *ptr);
@@ -187,10 +187,11 @@ int main()
     unsigned int density_tex;
     glGenTextures(1, &density_tex);
     glBindTexture(GL_TEXTURE_3D, density_tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexImage3D(GL_TEXTURE_3D, 0, GL_R32F, size_x, size_y, size_z, 0, GL_RED, GL_FLOAT, density);
     glGenerateMipmap(GL_TEXTURE_3D);
 
@@ -203,6 +204,7 @@ int main()
     data.sample_count = 0;
     data.nsamples = 30;
     data.albedo = .5f;
+    float density_scale = 10.f;
 
     glfwSetWindowUserPointer(window, &data);
     glAttachShader(data.compute_program, compute_shader);
@@ -219,7 +221,8 @@ int main()
         if (ImGui::ColorEdit3("Sky Color", data.sky_color)) data.sample_count = 0;
         ImGui::Text("Samples: %d", data.sample_count);
         ImGui::SliderInt("Samples / Frame", &data.nsamples, 1, 100);
-        if (ImGui::SliderFloat("albedo", &data.albedo, 0., 1.)) {
+        if (ImGui::SliderFloat("albedo", &data.albedo, 0., 1.)
+        ||  ImGui::SliderFloat("density scale", &density_scale, 1., 100.)) {
             data.sample_count = 0;
         }
         ImGui::End();
@@ -233,6 +236,7 @@ int main()
             glUniform1i(2, data.nsamples);
             glUniform1f(3, data.albedo);
             glUniform1f(4, sigma_hat);
+            glUniform1f(5, density_scale);
             glDispatchCompute(64, 64, 1);
             glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
             data.sample_count += data.nsamples;
