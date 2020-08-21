@@ -145,15 +145,16 @@ vec3 sample_sphere(inout float seed)
     return t;
 } */
 
-float sample_distance(Ray ray, float sigma_hat)
+float sample_distance(Ray ray, float tmax)
 {
     vec2 r = hash2(g_seed);
-    //return -log(1-r.x) / sigma_hat;
+    //return -log(1-r.x)/1.;
     float h = .01;
     float val = -log(1 - r.x);
     float s = 0;
     float t = 0;
-    while (s < val) {
+
+    while (s < val && t < tmax) {
         // get density
         vec3 p = ray.o + t * ray.d;
         float sigma_t;
@@ -166,7 +167,7 @@ float sample_distance(Ray ray, float sigma_hat)
             /* p = mod(p,1); */
             //p *= 100.; // [0, 100]
             /* p =  vec3(r, 1); */
-            sigma_t = textureLod(density, p, 0).r * density_scale;
+            sigma_t = textureLod(density, p, 0).r;
             s += h * sigma_t;
         }
         t += h;
@@ -204,7 +205,6 @@ void main() {
 
     g_seed = float(base_hash(uvec2(coords)))/float(0xffffffffU) + float(sample_count);
 
-    bool in_volume = false;
 
     for (int s = 0; s < nsamples; s++)
     {
@@ -214,17 +214,18 @@ void main() {
         vec3 L = vec3(0);
         vec3 throughput = vec3(1);
 
-        for (int i = 0; i < 10; i++)
+        bool in_volume = false;
+
+        for (int i = 0; i < 100; i++)
         {
             if (intersect_sphere(sphere, ray, inter)) {
-                L += throughput * inter.emission;
 
                 if (in_volume) {
                     float tmax = inter.t;
                     
                     // sample new position
-                    //float t = -log(1. - random(coords, r)) / sigma_t;
-                    float t = sample_distance(ray, sigma_hat);
+                    //float t = -log(1. - hash2(g_seed).x) / 1.;
+                    float t = sample_distance(ray, tmax);
 
                     if (t < tmax) {
                         // albedo ^^
@@ -232,12 +233,14 @@ void main() {
                         vec3 new_dir = sample_sphere(g_seed);
                         ray.o = ray.o + t * new_dir;
                     } else { // escape the volume
-                        ray.o = ray.o + tmax * ray.d + 0.001 * inter.normal;
+                        ray.o = ray.o + tmax * ray.d + 0.01 * inter.normal;
+                        in_volume = false;
                     }
                 } else { // enter volume, nothing happens
-                    ray.o = ray.o + inter.t * ray.d - 0.001 * inter.normal;
+                    ray.o = ray.o + inter.t * ray.d - 0.01 * inter.normal;
+                    in_volume = true;
                 }
-                in_volume = !in_volume;
+                //in_volume = !in_volume;
 
             } else {
                 L += throughput * sky_color;

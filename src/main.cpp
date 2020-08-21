@@ -80,7 +80,8 @@ float* loadVolume(std::string path, unsigned int& size_x, unsigned int& size_y, 
     f.read((char*)&max_y, 4);
     f.read((char*)&max_z, 4);
 
-    printf("(%u, %u, %u) -> (%u, %u, %u)\n", min_x,min_y, min_z, max_x, max_y, max_z);
+    assert(min_x <= max_x && min_y <= max_y && min_z <= max_z);
+    printf("(%d, %d, %d) -> (%d, %d, %d)\n", min_x,min_y, min_z, max_x, max_y, max_z);
     size_x = (unsigned)(max_x - min_x + 1);
     size_y = (unsigned)(max_y - min_y + 1);
     size_z = (unsigned)(max_z - min_z + 1);
@@ -220,11 +221,9 @@ int main()
         ImGui::Begin("Hello");
         if (ImGui::ColorEdit3("Sky Color", data.sky_color)) data.sample_count = 0;
         ImGui::Text("Samples: %d", data.sample_count);
-        ImGui::SliderInt("Samples / Frame", &data.nsamples, 1, 100);
-        if (ImGui::SliderFloat("albedo", &data.albedo, 0., 1.)
-        ||  ImGui::SliderFloat("density scale", &density_scale, 1., 100.)) {
-            data.sample_count = 0;
-        }
+        if (ImGui::SliderInt("Samples / Frame", &data.nsamples, 1, 100)) data.sample_count = 0;
+        if (ImGui::SliderFloat("albedo", &data.albedo, 0., 1.)) data.sample_count = 0;
+        if (ImGui::SliderFloat("density scale", &density_scale, 1., 100.)) data.sample_count = 0;
         ImGui::End();
         ImGui::Render();
 
