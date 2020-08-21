@@ -4,9 +4,10 @@
 #include <iostream>
 #include <fstream>
 
-int main() {
+int main(int argc, char** argv) {
+    assert(argc == 2);
     openvdb::initialize();
-    openvdb::io::File file("/home/wilhem/Downloads/smoke.vdb");
+    openvdb::io::File file(argv[1]);
     file.open();
 
     openvdb::GridBase::Ptr baseGrid = file.readGrid("density");
@@ -22,25 +23,25 @@ int main() {
 
     openvdb::CoordBBox box;
     grid->tree().evalActiveVoxelBoundingBox(box);
-    unsigned int s;
+    int s;
     s = box.min().x();
     out.write((const char*)&s, 4);
     s = box.min().y();
     out.write((const char*)&s, 4);
     s = box.min().z();
     out.write((const char*)&s, 4);
-    s = box.max().z();
+    s = box.max().x();
     out.write((const char*)&s, 4);
-    s = box.max().z();
+    s = box.max().y();
     out.write((const char*)&s, 4);
     s = box.max().z();
     out.write((const char*)&s, 4);
 
-    for (unsigned int z = box.min().z(); z <= box.max().z(); z++)
+    for (int z = box.min().z(); z <= box.max().z(); z++)
     {
-        for (unsigned int y = box.min().y(); y <= box.max().y(); y++)
+        for (int y = box.min().y(); y <= box.max().y(); y++)
         {
-            for (unsigned int x = box.min().x(); x <= box.max().x(); x++)
+            for (int x = box.min().x(); x <= box.max().x(); x++)
             {
                 openvdb::Vec3R p((float)x, (float)y, (float)z);
                 float val = openvdb::tools::PointSampler::sample(accessor, p);
